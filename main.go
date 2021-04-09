@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/graphql-go/graphql"
 	"github.com/mitchellh/mapstructure"
@@ -16,6 +19,11 @@ import (
 type GraphQLPayload struct {
 	Query     string                 `json:"query"`
 	Variables map[string]interface{} `json:"variables"`
+}
+
+type CustomJWTClaims struct {
+	Id string `json:"id"`
+	jwt.StandardClaims
 }
 
 var users []User = []User{
@@ -35,6 +43,27 @@ var routes []Route = []Route{
 		Zipcode:   "94015",
 		Numberpkg: "15",
 	},
+}
+
+var JWT_SECRET []byte = []byte("beyondmonkeys")
+
+func ValidateJWT(t string) (interface{}, error) {
+	token, err := jwt.Parse(t, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method %v", token.Header["alg"])
+		}
+		return JWT_SECRET, nil
+	})
+	if err != nil {
+		return nil, errors.New(`{ "message": "` + err.Error() + `" }`)
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		var tokenData CustomJWTClaims
+		mapstructure.Decode(claims, &tokenData)
+		return tokenData, nil
+	} else {
+		return nil, errors.New(`{ "message": "invalid token" }`)
+	}
 }
 
 var rootQuery *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
@@ -157,13 +186,17 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				var route Route
 				mapstructure.Decode(params.Args["route"], &route)
+				decoded, err := ValidateJWT(params.Context.Value("token").(string))
+				if err != nil {
+					return nil, err
+				}
 				validate := validator.New()
-				err := validate.Struct(route)
+				err = validate.Struct(route)
 				if err != nil {
 					return nil, err
 				}
 				route.Id = uuid.Must(uuid.NewV4()).String()
-				route.User = "dbone"
+				route.User = decoded.(CustomJWTClaims).Id
 				routes = append(routes, route)
 				return routes, nil
 			},
@@ -188,6 +221,7 @@ func main() {
 			Schema:         schema,
 			RequestString:  payload.Query,
 			VariableValues: payload.Variables,
+			Context:        context.WithValue(context.Background(), "token", request.URL.Query().Get("token")),
 		})
 		json.NewEncoder(response).Encode(result)
 	})

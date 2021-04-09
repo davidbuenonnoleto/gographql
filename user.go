@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/graphql-go/graphql"
 	uuid "github.com/satori/go.uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -100,6 +102,16 @@ func LoginEndpoint(response http.ResponseWriter, request *http.Request) {
 				response.Write([]byte(`{ "message": "invalid password" }`))
 				return
 			}
+			claims := CustomJWTClaims{
+				Id: user.Id,
+				StandardClaims: jwt.StandardClaims{
+					ExpiresAt: time.Now().Local().Add(time.Hour).Unix(),
+					Issuer:    "The monkey Developer",
+				},
+			}
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			tokenString, _ := token.SignedString(JWT_SECRET)
+			response.Write([]byte(`{ "token": "` + tokenString + `" }`))
 			json.NewEncoder(response).Encode(user)
 		}
 	}
