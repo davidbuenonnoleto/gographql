@@ -3,10 +3,10 @@ package main
 import "github.com/graphql-go/graphql"
 
 type Route struct {
-	Id        string `json:"id,omitempty"`
-	User      string `json:"user,omitempty"`
-	Zipcode   string `json:"zipcode,omitempty"`
-	Numberpkg string `json:"numberpkg,omitempty"`
+	Id        string `json:"id,omitempty" validate:"omitempty,uuid"`
+	User      string `json:"user,omitempty" validate:"isdefault"`
+	Zipcode   string `json:"zipcode,omitempty" validate:"required"`
+	Numberpkg string `json:"numberpkg,omitempty" validate:"required"`
 }
 
 var routeType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
