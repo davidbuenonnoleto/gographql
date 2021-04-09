@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/graphql-go/graphql"
 	"github.com/mitchellh/mapstructure"
@@ -225,5 +226,28 @@ func main() {
 		})
 		json.NewEncoder(response).Encode(result)
 	})
-	http.ListenAndServe(":12345", router)
+	headers := handlers.AllowedHeaders(
+		[]string{
+			"Content-type",
+			"Authorization",
+			"X-Requested-With",
+		},
+	)
+	methods := handlers.AllowedMethods(
+		[]string{
+			"GET",
+			"POST",
+			"PUT",
+			"DELETE",
+		},
+	)
+	origins := handlers.AllowedOrigins(
+		[]string{
+			"*",
+		},
+	)
+	http.ListenAndServe(
+		":12345",
+		handlers.CORS(headers, methods, origins)(router),
+	)
 }

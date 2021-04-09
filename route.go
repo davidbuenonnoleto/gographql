@@ -16,7 +16,16 @@ var routeType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			Type: graphql.String,
 		},
 		"user": &graphql.Field{
-			Type: graphql.String,
+			Type: userType,
+			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+				route := params.Source.(Route)
+				for _, user := range users {
+					if user.Id == route.User {
+						return user, nil
+					}
+				}
+				return nil, nil
+			},
 		},
 		"zipcode": &graphql.Field{
 			Type: graphql.String,
