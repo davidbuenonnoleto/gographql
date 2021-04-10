@@ -247,7 +247,7 @@ func main() {
 		},
 	)
 	http.ListenAndServe(
-		":12345",
+		":8080",
 		handlers.CORS(headers, methods, origins)(router),
 	)
 }

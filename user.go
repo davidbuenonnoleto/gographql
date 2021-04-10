@@ -20,10 +20,13 @@ type User struct {
 	Password  string `json:"password,omitempty" validate:"required,gte=4"`
 }
 
-/* defining a graphql object */
+// define custom GraphQL ObjectType `userType` for our Golang struct `User`
+// Note that
+// - the fields in our userType maps with the json tags for the fields in our struct
+// - the field type matches the field type in our struct
 var userType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 	Name: "User",
-	Fields: &graphql.Fields{
+	Fields: graphql.Fields{
 		"id": &graphql.Field{
 			Type: graphql.String,
 		},

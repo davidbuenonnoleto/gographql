@@ -9,6 +9,10 @@ type Route struct {
 	Numberpkg string `json:"numberpkg,omitempty" validate:"required"`
 }
 
+// define custom GraphQL ObjectType `routeType` for our Golang struct `Route`
+// Note that
+// - the fields in our routeType maps with the json tags for the fields in our struct
+// - the field type matches the field type in our struct
 var routeType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 	Name: "Route",
 	Fields: graphql.Fields{
