@@ -183,7 +183,7 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			},
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				var route Route
-				mapstructure.Decode(params.Args["article"], &route)
+				mapstructure.Decode(params.Args["route"], &route)
 				decoded, err := ValidateJWT(params.Context.Value("token").(string))
 				if err != nil {
 					return nil, err

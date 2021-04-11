@@ -44,6 +44,9 @@ var userType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 		"password": &graphql.Field{
 			Type: graphql.String,
 		},
+		"type": &graphql.Field{
+			Type: graphql.String,
+		},
 	},
 })
 
@@ -64,6 +67,9 @@ var userInputType *graphql.InputObject = graphql.NewInputObject(graphql.InputObj
 			Type: graphql.String,
 		},
 		"password": &graphql.InputObjectFieldConfig{
+			Type: graphql.String,
+		},
+		"type": &graphql.InputObjectFieldConfig{
 			Type: graphql.String,
 		},
 	},

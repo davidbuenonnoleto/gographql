@@ -35,6 +35,9 @@ var routeType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 		"numberpkg": &graphql.Field{
 			Type: graphql.String,
 		},
+		"type": &graphql.Field{
+			Type: graphql.String,
+		},
 	},
 })
 
@@ -48,6 +51,9 @@ var routeInputType *graphql.InputObject = graphql.NewInputObject(graphql.InputOb
 			Type: graphql.String,
 		},
 		"numberpkg": &graphql.InputObjectFieldConfig{
+			Type: graphql.String,
+		},
+		"type": &graphql.InputObjectFieldConfig{
 			Type: graphql.String,
 		},
 	},
