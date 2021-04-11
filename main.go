@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	uuid "github.com/satori/go.uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -27,26 +28,8 @@ type CustomJWTClaims struct {
 	jwt.StandardClaims
 }
 
-var users []User = []User{
-	{
-		Id:        "user-1",
-		Firstname: "David",
-		Lastname:  "Noleto",
-		Username:  "dbone",
-		Password:  "senha132",
-	},
-}
-
-var routes []Route = []Route{
-	{
-		Id:        "route-1",
-		User:      "user-1",
-		Zipcode:   "94015",
-		Numberpkg: "15",
-	},
-}
-
 var JWT_SECRET []byte = []byte("beyondmonkeys")
+var bucket *gocb.Bucket
 
 func ValidateJWT(t string) (interface{}, error) {
 	token, err := jwt.Parse(t, func(token *jwt.Token) (interface{}, error) {
@@ -73,6 +56,16 @@ var rootQuery *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 		"users": &graphql.Field{
 			Type: graphql.NewList(userType),
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+				var users []User
+				query := gocb.NewN1qlQuery(`SELECT ` + bucket.Name() + `.* FROM ` + bucket.Name() + ` WHERE type = 'manager'`)
+				rows, err := bucket.ExecuteN1qlQuery(query, nil)
+				if err != nil {
+					return nil, err
+				}
+				var row User
+				for rows.Next(&row) {
+					users = append(users, row)
+				}
 				return users, nil
 			},
 		},
@@ -85,17 +78,27 @@ var rootQuery *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			},
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				id := params.Args["id"].(string)
-				for _, user := range users {
-					if user.Id == id {
-						return user, nil
-					}
+				var user User
+				_, err := bucket.Get(id, &user)
+				if err != nil {
+					return nil, err
 				}
-				return nil, nil
+				return user, nil
 			},
 		},
 		"routes": &graphql.Field{
 			Type: graphql.NewList(routeType),
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+				var routes []Route
+				query := gocb.NewN1qlQuery(`SELECT ` + bucket.Name() + `.* FROM ` + bucket.Name() + ` WHERE type = 'article'`)
+				rows, err := bucket.ExecuteN1qlQuery(query, nil)
+				if err != nil {
+					return nil, err
+				}
+				var row Route
+				for rows.Next(&row) {
+					routes = append(routes, row)
+				}
 				return routes, nil
 			},
 		},
@@ -108,12 +111,12 @@ var rootQuery *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			},
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				id := params.Args["id"].(string)
-				for _, route := range routes {
-					if route.Id == id {
-						return route, nil
-					}
+				var route Route
+				_, err := bucket.Get(id, &route)
+				if err != nil {
+					return nil, err
 				}
-				return nil, nil
+				return route, nil
 			},
 		},
 	},
@@ -131,13 +134,11 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			},
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				id := params.Args["id"].(string)
-				for index, user := range users {
-					if user.Id == id {
-						users = append(users[:index], users[index+1:]...)
-						return users, nil
-					}
+				_, err := bucket.Remove(id, 0)
+				if err != nil {
+					return nil, err
 				}
-				return nil, nil
+				return id, nil
 			},
 		},
 		"updateUser": &graphql.Field{
@@ -151,30 +152,26 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 				var changes User
 				mapstructure.Decode(params.Args["user"], &changes)
 				validate := validator.New()
-				for index, user := range users {
-					if user.Id == changes.Id {
-						if changes.Firstname != "" {
-							user.Firstname = changes.Firstname
-						}
-						if changes.Lastname != "" {
-							user.Lastname = changes.Lastname
-						}
-						if changes.Username != "" {
-							user.Username = changes.Username
-						}
-						if changes.Password != "" {
-							err := validate.Var(changes.Password, "gte=4")
-							if err != nil {
-								return nil, err
-							}
-							hash, _ := bcrypt.GenerateFromPassword([]byte(changes.Password), 10)
-							user.Password = string(hash)
-						}
-						users[index] = user
-						return users, nil
-					}
+				mutation := bucket.MutateIn(changes.Id, 0, 0)
+				if changes.Firstname != "" {
+					mutation.Upsert("firstname", changes.Firstname, true)
 				}
-				return nil, nil
+				if changes.Lastname != "" {
+					mutation.Upsert("lastname", changes.Lastname, true)
+				}
+				if changes.Username != "" {
+					mutation.Upsert("username", changes.Username, true)
+				}
+				if changes.Password != "" {
+					err := validate.Var(changes.Password, "gte=4")
+					if err != nil {
+						return nil, err
+					}
+					hash, _ := bcrypt.GenerateFromPassword([]byte(changes.Password), 10)
+					mutation.Upsert("password", string(hash), true)
+				}
+				mutation.Execute()
+				return changes, nil
 			},
 		},
 		"createRoute": &graphql.Field{
@@ -186,7 +183,7 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			},
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				var route Route
-				mapstructure.Decode(params.Args["route"], &route)
+				mapstructure.Decode(params.Args["article"], &route)
 				decoded, err := ValidateJWT(params.Context.Value("token").(string))
 				if err != nil {
 					return nil, err
@@ -198,8 +195,9 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 				}
 				route.Id = uuid.Must(uuid.NewV4()).String()
 				route.User = decoded.(CustomJWTClaims).Id
-				routes = append(routes, route)
-				return routes, nil
+				route.Type = "peninisula"
+				bucket.Insert(route.Id, route, 0)
+				return route, nil
 			},
 		},
 	},
@@ -207,6 +205,16 @@ var rootMutation *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 
 func main() {
 	fmt.Println("Starting the application")
+
+	/* couchbase connect*/
+	cluster, _ := gocb.Connect("couchbase://localhost")
+	cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: "demo",
+		Password: "123456",
+	})
+	/* bucket selection */
+	bucket, _ = cluster.OpenBucket("graphql", "")
+
 	router := mux.NewRouter()
 	schema, _ := graphql.NewSchema(graphql.SchemaConfig{
 		Query:    rootQuery,

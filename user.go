@@ -9,6 +9,7 @@ import (
 	"github.com/graphql-go/graphql"
 	uuid "github.com/satori/go.uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -18,6 +19,7 @@ type User struct {
 	Lastname  string `json:"lastname,omitempty" validate:"required"`
 	Username  string `json:"username,omitempty" validate:"required"`
 	Password  string `json:"password,omitempty" validate:"required,gte=4"`
+	Type      string `json:"type,omitempty"`
 }
 
 // define custom GraphQL ObjectType `userType` for our Golang struct `User`
@@ -81,8 +83,9 @@ func RegisterEndpoint(response http.ResponseWriter, request *http.Request) {
 	user.Id = uuid.Must(uuid.NewV4()).String()
 	hash, _ := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
 	user.Password = string(hash)
-	users = append(users, user)
-	json.NewEncoder(response).Encode(users)
+	user.Type = "manager"
+	bucket.Insert(user.Id, user, 0)
+	json.NewEncoder(response).Encode(user)
 }
 
 func LoginEndpoint(response http.ResponseWriter, request *http.Request) {
@@ -97,26 +100,29 @@ func LoginEndpoint(response http.ResponseWriter, request *http.Request) {
 		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
-	for _, user := range users {
-		if user.Username == data.Username {
-			err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(data.Password))
-			if err != nil {
-				response.WriteHeader(500)
-				response.Write([]byte(`{ "message": "invalid password" }`))
-				return
-			}
-			claims := CustomJWTClaims{
-				Id: user.Id,
-				StandardClaims: jwt.StandardClaims{
-					ExpiresAt: time.Now().Local().Add(time.Hour).Unix(),
-					Issuer:    "The monkey Developer",
-				},
-			}
-			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-			tokenString, _ := token.SignedString(JWT_SECRET)
-			response.Write([]byte(`{ "token": "` + tokenString + `" }`))
-			json.NewEncoder(response).Encode(user)
-		}
+	query := gocb.NewN1qlQuery(`SELECT ` + bucket.Name() + `.* FROM ` + bucket.Name() + ` WHERE username = $1`)
+	rows, _ := bucket.ExecuteN1qlQuery(query, []interface{}{data.Username})
+	var row User
+	err = rows.One(&row)
+	if err != nil {
+		response.WriteHeader(500)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
 	}
-	json.NewEncoder(response).Encode(User{})
+	err = bcrypt.CompareHashAndPassword([]byte(row.Password), []byte(data.Password))
+	if err != nil {
+		response.WriteHeader(500)
+		response.Write([]byte(`{ "message": "invalid password" }`))
+		return
+	}
+	claims := CustomJWTClaims{
+		Id: row.Id,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Local().Add(time.Hour).Unix(),
+			Issuer:    "Beyond Monkeys",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString(JWT_SECRET)
+	response.Write([]byte(`{ "token": "` + tokenString + `" }`))
 }

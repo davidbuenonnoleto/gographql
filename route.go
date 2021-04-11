@@ -7,6 +7,7 @@ type Route struct {
 	User      string `json:"user,omitempty" validate:"isdefault"`
 	Zipcode   string `json:"zipcode,omitempty" validate:"required"`
 	Numberpkg string `json:"numberpkg,omitempty" validate:"required"`
+	Type      string `json:"type,omitempty"`
 }
 
 // define custom GraphQL ObjectType `routeType` for our Golang struct `Route`
@@ -23,12 +24,9 @@ var routeType *graphql.Object = graphql.NewObject(graphql.ObjectConfig{
 			Type: userType,
 			Resolve: func(params graphql.ResolveParams) (interface{}, error) {
 				route := params.Source.(Route)
-				for _, user := range users {
-					if user.Id == route.User {
-						return user, nil
-					}
-				}
-				return nil, nil
+				var user User
+				bucket.Get(route.User, &user)
+				return user, nil
 			},
 		},
 		"zipcode": &graphql.Field{
